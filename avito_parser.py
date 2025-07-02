@@ -44,7 +44,7 @@ def create_driver(headless: bool = True) -> webdriver.Chrome:
     user_agent = random.choice(USER_AGENTS)
     options.add_argument(f"user-agent={user_agent}")
     logging.info(f"Using User-Agent: {user_agent}")
-
+    options.binary_location = "/usr/bin/google-chrome"
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     driver.set_page_load_timeout(60)
     return driver
