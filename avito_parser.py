@@ -24,7 +24,6 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)s %(threadName)s %(message)s',
 )
 
-# Глобальный замок для записи в CSV
 write_lock = Lock()
 
 
@@ -69,16 +68,11 @@ def wait_for_captcha(city: str, timeout: int = 5):
 
 
 def get_listing_count(driver: webdriver.Chrome) -> int:
-    # Улучшенная функция для парсинга чисел с пробелами (формат 4 970)
     def parse_count(text: str) -> int:
-        # Удаляем все нецифровые символы, кроме пробелов
         cleaned = re.sub(r'[^\d\s]', '', text)
-        # Заменяем пробелы и преобразуем в число
         return int(cleaned.replace(' ', '')) if cleaned.strip() else 0
 
-    # Попробуем разные стратегии поиска
     try:
-        # Стратегия 1: основной элемент с количеством
         count_elem = driver.find_element(By.CSS_SELECTOR, ".page-title-count")
         count = parse_count(count_elem.text)
         if count > 0:
@@ -87,7 +81,6 @@ def get_listing_count(driver: webdriver.Chrome) -> int:
         pass
 
     try:
-        # Стратегия 2: альтернативный элемент
         count_elem = driver.find_element(By.CSS_SELECTOR, "[data-marker='page-title/count']")
         count = parse_count(count_elem.text)
         if count > 0:
@@ -96,7 +89,6 @@ def get_listing_count(driver: webdriver.Chrome) -> int:
         pass
 
     try:
-        # Стратегия 3: поиск в заголовке
         title = driver.title
         match = re.search(r'(\d[\d\s]*) (?:объявлен|объявления|объявлений)', title)
         if match:
@@ -105,7 +97,6 @@ def get_listing_count(driver: webdriver.Chrome) -> int:
         pass
 
     try:
-        # Стратегия 4: поиск по всему контенту
         match = re.search(r'(\d[\d\s]*) (?:объявлен|объявления|объявлений)', driver.page_source)
         if match:
             return parse_count(match.group(1))
@@ -157,15 +148,14 @@ def worker(jobs, output_file):
             city_name, city_id, city_url, category_name, category_url = job
             result = test(driver, city_name, city_id, city_url, category_name, category_url)
 
-            # Запись результата в CSV с блокировкой
             with write_lock:
                 with open(output_file, 'a', newline='', encoding='utf-8') as fout:
                     writer = csv.writer(fout, delimiter=';')
                     writer.writerow(result)
-                    fout.flush()  # Принудительный сброс буфера
+                    fout.flush()
                     logging.info(f"Записано в CSV: {result}")
 
-            sleep_time = random.uniform(8, 15)  # Увеличил случайную задержку
+            sleep_time = random.uniform(8, 13)
             logging.info(f"Ждем {sleep_time:.1f} сек. перед следующим запросом.")
             time.sleep(sleep_time)
     except Exception as e:
@@ -175,22 +165,33 @@ def worker(jobs, output_file):
         logging.info(f"Поток завершил работу")
     return len(jobs)
 
+def load_done_jobs(output_file):
+    done = set()
+    if os.path.exists(output_file):
+        with open(output_file, 'r', encoding='utf-8') as fin:
+            reader = csv.reader(fin, delimiter=';')
+            next(reader, None)
+            for row in reader:
+                if len(row) >= 4:
+                    done.add((row[0].strip(), row[3].strip()))
+    return done
 
 def main():
     cities_file = "avito.csv"
     categories_file = "avito.txt"
     output_file = time.strftime("%d-%m-%Y") + ".csv"
 
-    # Получаем абсолютный путь для логов
     abs_output_file = os.path.abspath(output_file)
     logging.info(f"Результаты будут записаны в файл: {abs_output_file}")
 
-    # Создаем файл и записываем заголовок
-    with open(output_file, 'w', newline='', encoding='utf-8') as fout:
-        writer = csv.writer(fout, delimiter=';')
-        writer.writerow(["Город", "ID", "URL_имя", "Категория", "Количество"])
+    done_jobs = load_done_jobs(output_file)
+    logging.info(f"Уже выполнено задач: {len(done_jobs)}")
 
-    # Загрузка категорий
+    if not os.path.exists(output_file):
+        with open(output_file, 'w', newline='', encoding='utf-8') as fout:
+            writer = csv.writer(fout, delimiter=';')
+            writer.writerow(["Город", "ID", "URL_имя", "Категория", "Количество"])
+
     categories = []
     with open(categories_file, "r", encoding="utf-8") as f:
         for line in f:
@@ -201,7 +202,6 @@ def main():
             if len(parts) == 2:
                 categories.append((parts[0], parts[1]))
 
-    # Загрузка городов
     cities = []
     with open(cities_file, "r", encoding="utf-8") as fin:
         reader = csv.reader(fin)
@@ -213,22 +213,19 @@ def main():
             city_url = row[2].strip()
             cities.append((city_name, city_id, city_url))
 
-    # Создание задач
     all_jobs = []
     for city_name, city_id, city_url in cities:
         for category_name, category_url in categories:
-            all_jobs.append((city_name, city_id, city_url, category_name, category_url))
+            if (city_name, category_name) not in done_jobs:
+                all_jobs.append((city_name, city_id, city_url, category_name, category_url))
 
-    # Разбиение на части для потоков
     num_workers = 3
     chunk_size = (len(all_jobs) + num_workers - 1) // num_workers
     chunks = [all_jobs[i:i + chunk_size] for i in range(0, len(all_jobs), chunk_size)]
 
-    # Запуск потоков
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         futures = [executor.submit(worker, chunk, output_file) for chunk in chunks]
 
-        # Ожидание завершения всех задач
         for future in as_completed(futures):
             try:
                 processed_count = future.result()
