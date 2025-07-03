@@ -1709,3 +1709,40 @@
 Ясный;16082;yasnyy;pomesh;3
 Ухта;99642;uhta;kvartiry;0
 Заринск;47035;zarinsk;dom;0
+Яранск;17252;yaransk;zemlya_selhoznaznacheniya;9
+Заринск;47035;zarinsk;dachi;38
+Заринск;47035;zarinsk;kottedzhi;7
+Яранск;17252;yaransk;garazhi_m;7
+Ясный;16082;yasnyy;sklady;1
+Химки;207125;himki;pomesh;137
+Ялта;76746;yalta;zemlya_promnaznacheniya;15
+Большой Камень;39257;bolshoy_kamen;zemlya_promnaznacheniya;1
+Усть-Джегута;30602;ust-dzheguta;pomesh;8
+Ялта;76746;yalta;garazhi_m;102
+Большой Камень;39257;bolshoy_kamen;garazhi_m;9
+Химки;207125;himki;sklady;70
+Усть-Джегута;30602;ust-dzheguta;sklady;1
+Ялта;76746;yalta;ofisy;46
+Большой Камень;39257;bolshoy_kamen;ofisy;2
+Химки;207125;himki;magaziny;94
+Усть-Джегута;30602;ust-dzheguta;magaziny;6
+Николаевск;15081;nikolaevsk;zemlya_promnaznacheniya;0
+Ясногорск;16804;tulskaya_oblast_yasnogorsk;sklady;0
+Заринск;47035;zarinsk;taunhaus;0
+Ялта;76746;yalta;pomesh;94
+Большой Камень;39257;bolshoy_kamen;pomesh;3
+Усть-Джегута;30602;ust-dzheguta;proizvodstvo;1
+Химки;207125;himki;proizvodstvo;38
+Николаевск;15081;nikolaevsk;garazhi_m;1
+Заринск;47035;zarinsk;zemlya_izhs;31
+Ялта;76746;yalta;sklady;10
+Черкесск;121439;cherkessk;kvartiry;1673
+Хотьково;21612;hotkovo;kvartiry;308
+Заринск;47035;zarinsk;zemlya_selhoznaznacheniya;16
+Ялта;76746;yalta;magaziny;58
+Черкесск;121439;cherkessk;dom;565
+Хотьково;21612;hotkovo;dom;272
+Заринск;47035;zarinsk;zemlya_promnaznacheniya;2
+Черкесск;121439;cherkessk;dachi;90
+Ялта;76746;yalta;proizvodstvo;3
+Хотьково;21612;hotkovo;dachi;86

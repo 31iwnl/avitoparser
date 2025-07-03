@@ -49,7 +49,6 @@ def create_driver(headless: bool = True) -> webdriver.Chrome:
     user_agent = random.choice(USER_AGENTS)
     options.add_argument(f"user-agent={user_agent}")
     logging.info(f"Using User-Agent: {user_agent}")
-    options.binary_location = "/usr/bin/google-chrome"
 
     service = Service(ChromeDriverManager().install(), log_path="chromedriver.log")
     driver = webdriver.Chrome(service=service, options=options)
@@ -125,17 +124,23 @@ def test(driver, city_name: str, city_id: str, city_url: str, category_name: str
             logging.info(f"[{city_name}][{category_name}] Попытка {attempt}: открываю URL: {url}")
             driver.get(url)
 
-            # Явное ожидание загрузки ключевого элемента
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".page-title-count"))
+            wait = WebDriverWait(driver, 60)
+            wait.until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, ".page-title-count")),
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "[data-marker='page-title/count']"))
+                )
             )
 
             if is_blocked(driver):
                 logging.warning(f"[{city_name}][{category_name}] Обнаружена блокировка или капча.")
                 wait_for_captcha(city_name)
                 driver.get(url)
-                WebDriverWait(driver, 30).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".page-title-count"))
+                wait.until(
+                    EC.any_of(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, ".page-title-count")),
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "[data-marker='page-title/count']"))
+                    )
                 )
 
             count = get_listing_count(driver)
@@ -173,7 +178,13 @@ def worker(jobs, output_file):
         driver = create_driver(headless=True)
         for job in jobs:
             city_name, city_id, city_url, category_name, category_url = job
-            result = test(driver, city_name, city_id, city_url, category_name, category_url)
+            try:
+                result = test(driver, city_name, city_id, city_url, category_name, category_url)
+            except TimeoutException as e:
+                logging.error(f"[{city_name}][{category_name}] TimeoutException, перезапускаем драйвер: {e}")
+                driver.quit()
+                driver = create_driver(headless=True)
+                result = test(driver, city_name, city_id, city_url, category_name, category_url)
 
             with write_lock:
                 with open(output_file, 'a', newline='', encoding='utf-8') as fout:
@@ -182,7 +193,7 @@ def worker(jobs, output_file):
                     fout.flush()
                     logging.info(f"Записано в CSV: {result}")
 
-            sleep_time = random.uniform(8, 13)
+            sleep_time = random.uniform(15, 25)
             logging.info(f"Ждем {sleep_time:.1f} сек. перед следующим запросом.")
             time.sleep(sleep_time)
     except Exception as e:
