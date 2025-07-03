@@ -10,7 +10,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import WebDriverException, NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import (
+    WebDriverException,
+    NoSuchElementException,
+    TimeoutException,
+)
 from webdriver_manager.chrome import ChromeDriverManager
 
 USER_AGENTS = [
@@ -44,7 +50,9 @@ def create_driver(headless: bool = True) -> webdriver.Chrome:
     options.add_argument(f"user-agent={user_agent}")
     logging.info(f"Using User-Agent: {user_agent}")
     options.binary_location = "/usr/bin/google-chrome"
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+    service = Service(ChromeDriverManager().install(), log_path="chromedriver.log")
+    driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(60)
     return driver
 
@@ -72,22 +80,23 @@ def get_listing_count(driver: webdriver.Chrome) -> int:
         cleaned = re.sub(r'[^\d\s]', '', text)
         return int(cleaned.replace(' ', '')) if cleaned.strip() else 0
 
-    try:
-        count_elem = driver.find_element(By.CSS_SELECTOR, ".page-title-count")
-        count = parse_count(count_elem.text)
-        if count > 0:
-            return count
-    except NoSuchElementException:
-        pass
+    selectors = [
+        ".page-title-count",
+        "[data-marker='page-title/count']"
+    ]
 
-    try:
-        count_elem = driver.find_element(By.CSS_SELECTOR, "[data-marker='page-title/count']")
-        count = parse_count(count_elem.text)
-        if count > 0:
-            return count
-    except NoSuchElementException:
-        pass
+    for selector in selectors:
+        try:
+            count_elem = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+            )
+            count = parse_count(count_elem.text)
+            if count > 0:
+                return count
+        except (NoSuchElementException, TimeoutException):
+            continue
 
+    # Попытка через заголовок страницы
     try:
         title = driver.title
         match = re.search(r'(\d[\d\s]*) (?:объявлен|объявления|объявлений)', title)
@@ -96,6 +105,7 @@ def get_listing_count(driver: webdriver.Chrome) -> int:
     except Exception:
         pass
 
+    # Попытка через исходный код страницы
     try:
         match = re.search(r'(\d[\d\s]*) (?:объявлен|объявления|объявлений)', driver.page_source)
         if match:
@@ -114,17 +124,32 @@ def test(driver, city_name: str, city_id: str, city_url: str, category_name: str
         try:
             logging.info(f"[{city_name}][{category_name}] Попытка {attempt}: открываю URL: {url}")
             driver.get(url)
-            time.sleep(random.uniform(4, 7))
+
+            # Явное ожидание загрузки ключевого элемента
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".page-title-count"))
+            )
 
             if is_blocked(driver):
                 logging.warning(f"[{city_name}][{category_name}] Обнаружена блокировка или капча.")
                 wait_for_captcha(city_name)
                 driver.get(url)
-                time.sleep(random.uniform(4, 7))
+                WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, ".page-title-count"))
+                )
 
             count = get_listing_count(driver)
             logging.info(f"[{city_name}][{category_name}] Найдено объявлений: {count}")
             return (city_name, city_id, city_url, category_name, count)
+
+        except TimeoutException as e:
+            logging.error(f"[{city_name}][{category_name}] TimeoutException: {e}")
+            if attempt == max_retries:
+                logging.error(f"[{city_name}][{category_name}] Превышено число попыток, пропускаем.")
+                return (city_name, city_id, city_url, category_name, 0)
+            else:
+                logging.info(f"[{city_name}][{category_name}] Повтор через паузу...")
+                time.sleep(10)
 
         except WebDriverException as e:
             logging.error(f"[{city_name}][{category_name}] Ошибка WebDriver: {e}")
@@ -134,6 +159,7 @@ def test(driver, city_name: str, city_id: str, city_url: str, category_name: str
             else:
                 logging.info(f"[{city_name}][{category_name}] Ошибка, повтор через паузу...")
                 time.sleep(10)
+
         except Exception as e:
             logging.error(f"[{city_name}][{category_name}] Неожиданная ошибка: {e}")
             return (city_name, city_id, city_url, category_name, 0)
@@ -142,8 +168,9 @@ def test(driver, city_name: str, city_id: str, city_url: str, category_name: str
 
 def worker(jobs, output_file):
     logging.info(f"Поток стартовал с {len(jobs)} задачами")
-    driver = create_driver(headless=True)
+    driver = None
     try:
+        driver = create_driver(headless=True)
         for job in jobs:
             city_name, city_id, city_url, category_name, category_url = job
             result = test(driver, city_name, city_id, city_url, category_name, category_url)
@@ -161,9 +188,14 @@ def worker(jobs, output_file):
     except Exception as e:
         logging.error(f"Ошибка в worker: {e}")
     finally:
-        driver.quit()
+        if driver:
+            try:
+                driver.quit()
+            except Exception as e:
+                logging.error(f"Ошибка при закрытии драйвера: {e}")
         logging.info(f"Поток завершил работу")
     return len(jobs)
+
 
 def load_done_jobs(output_file):
     done = set()
@@ -175,6 +207,7 @@ def load_done_jobs(output_file):
                 if len(row) >= 4:
                     done.add((row[0].strip(), row[3].strip()))
     return done
+
 
 def main():
     cities_file = "avito.csv"
@@ -219,9 +252,11 @@ def main():
             if (city_name, category_name) not in done_jobs:
                 all_jobs.append((city_name, city_id, city_url, category_name, category_url))
 
-    num_workers = 3
+    num_workers = min(7, max(1, os.cpu_count() or 3))
     chunk_size = (len(all_jobs) + num_workers - 1) // num_workers
     chunks = [all_jobs[i:i + chunk_size] for i in range(0, len(all_jobs), chunk_size)]
+
+    logging.info(f"Запускаем с {num_workers} потоками")
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         futures = [executor.submit(worker, chunk, output_file) for chunk in chunks]
