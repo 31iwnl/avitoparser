@@ -45,7 +45,7 @@ def create_driver(headless: bool = True) -> webdriver.Chrome:
     options.add_argument("--disable-software-rasterizer")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-features=VizDisplayCompositor")
-
+    options.binary_location = "/usr/bin/google-chrome"
     user_agent = random.choice(USER_AGENTS)
     options.add_argument(f"user-agent={user_agent}")
     logging.info(f"Using User-Agent: {user_agent}")
