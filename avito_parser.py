@@ -193,7 +193,7 @@ def worker(jobs, output_file):
                     fout.flush()
                     logging.info(f"Записано в CSV: {result}")
 
-            sleep_time = random.uniform(15, 25)
+            sleep_time = random.uniform(15, 20)
             logging.info(f"Ждем {sleep_time:.1f} сек. перед следующим запросом.")
             time.sleep(sleep_time)
     except Exception as e:
